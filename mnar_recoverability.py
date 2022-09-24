@@ -92,7 +92,7 @@ def testShadowGraph():
     value of X is observed.
     Then test the full law of the shadow graph using conditional probabilities.
     """
-    size = 5000
+    size = 10000
     print("size:", size)
 
     # around 0.62 of rows of data of Y are 1
