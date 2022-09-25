@@ -7,13 +7,24 @@ def estimateProbability(Y, Z, data):
     Given Y, a binary variable, and a list Z of binary variables, calculates the ratio
     P(Y=1 | Z) using data for each possible setting of binary variables in Z. The
     length of the output will be 2**len(Z).
+
+    Returns a probability table which is a list of tuples. The first element of the 
+    tuple is a string representing the probability law, and the second element is
+    a float of the value of the probability law.
     """
+    # save a copy of the original data set
     original_data = data.copy()
     # save the size of the original data set
     size = len(data)
 
     # initialize the output list
     probability_table = []
+
+    # handle edge case where Z is an empty list
+    # in this case return P(Y=1)
+    if len(Z) == 0:
+        probability_table.append(('P(Y=1)', len(data[data[Y] == 1])/size))
+        return probability_table
 
     binstrings = 2**len(Z)
     # length of the binary strings will be log(binstrings)
@@ -84,7 +95,7 @@ def computeConfidenceIntervals(Y, Z, data, num_bootstraps=200, alpha=0.05):
 
     return estimates
 
-def testShadowGraph():
+def testShadowGraph(verbose=False):
     """
     Generate a graph with the following format: Y->X->RX. We refer to this graph as the
     shadow graph. Both Y and X are binary variables. RX is the missingness indicator for the
@@ -92,19 +103,31 @@ def testShadowGraph():
     value of X is observed.
     Then test the full law of the shadow graph using conditional probabilities.
     """
-    size = 1000
-    print("size:", size)
+    size = 5000
+    if verbose:
+        print("size:", size)
 
     # around 0.62 of rows of data of Y are 1
+    # Y has no parents, so it does not depend on any other variables
     Y = np.random.binomial(1, 0.62, size)
-    print(np.bincount(Y)[1]/size)
+    if verbose:
+        print('proportion of Y=1:', np.bincount(Y)[1]/size)
+
     # around 0.52 of rows of data of X are 1
+    # toggle one of the following DGP processes:
     X = np.random.binomial(1, expit(Y*0.7-0.4), size)
-    print(np.bincount(X)[1]/size)
+    #X = np.random.binomial(1, 0.52, size)
+    if verbose:
+        print('proportion of X=1:', np.bincount(X)[1]/size)
+    
     # generate the missingness mechanism of X, around 0.29 of the rows of X are
     # missing
-    RX = np.random.binomial(1, expit(X*0.5-1.2), size)
-    print(np.bincount(RX)[1]/size)
+    # toggle one of the following DGP processes:
+    RX = np.random.binomial(1, expit(X-1.7), size)
+    #RX = np.random.binomial(1, 0.28, size)
+    #RX = np.random.binomial(1, expit(Y-2), size)
+    if verbose:
+        print('proportion of RX=1', np.bincount(RX)[1]/size)
     # assert that less than 0.3 of the values of X are missing
     assert RX.sum() <= 0.3*size, 'too many missing values in X'
 
@@ -119,19 +142,25 @@ def testShadowGraph():
     # drop the rows of data where X is unobserved
     partial_data = partial_data[partial_data["X"] != -1]
 
-    # estimate the conditional probabilities of P(Y | X) and P(X) for the fully observed
-    # data set
+    # estimate the conditional probabilities for the fully observed data set
+    print()
     print('fully observed data set')
+    print('P(Y):', estimateProbability("Y", [], full_data))
+    print('confidence intervals:', computeConfidenceIntervals("Y", [], full_data))
     print('P(Y | X):', estimateProbability("Y", ["X"], full_data))
     print('confidence intervals:', computeConfidenceIntervals("Y", ["X"], full_data))
 
-    # estimate the conditional probabilities of P(Y | X) and P(X) for the partially observed
-    # data set
+    # estimate the conditional probabilities for the partially observed data set
+    # note that every single probability calculated here has RX=0 past the
+    # conditioning bar
+    print()
     print('partially observed data set')
+    print('P(Y):', estimateProbability("Y", [], partial_data))
+    print('confidence intervals:', computeConfidenceIntervals("Y", [], partial_data))
     print('P(Y | X):', estimateProbability("Y", ["X"], partial_data))
     print('confidence intervals:', computeConfidenceIntervals("Y", ["X"], partial_data))
 
 if __name__ == "__main__":
     np.random.seed(10)
 
-    testShadowGraph()
+    testShadowGraph(verbose=True)
