@@ -14,8 +14,8 @@ def estimateProbability(Y, Z, data):
     """
     # save a copy of the original data set
     original_data = data.copy()
-    # save the size of the original data set
-    size = len(data)
+    # initialize a size variable
+    size = 0
 
     # initialize the output list
     probability_table = []
@@ -23,6 +23,8 @@ def estimateProbability(Y, Z, data):
     # handle edge case where Z is an empty list
     # in this case return P(Y=1)
     if len(Z) == 0:
+        # divide by the size of the whole data set
+        size = len(data)
         probability_table.append(('P(Y=1)', len(data[data[Y] == 1])/size))
         return probability_table
 
@@ -51,8 +53,57 @@ def estimateProbability(Y, Z, data):
 
         # append to the output
         # divide the amount of rows of data where Y == 1 in the truncated data set by
-        # the rows of data in the original data set
+        # the rows of data in the truncated data set
+        size = len(data)
         probability_table.append((state_string, len(data[data[Y] == 1])/size))
+
+    return probability_table
+
+def estimateProbabilityTwoVar(Y, Z, data, verbose=False):
+    """
+    Given Y, a binary variable and a binary variable Z, calculates the ratio
+    P(Y=1 | Z=1) and P(Y=1 | Z=0).
+
+    Returns a probability table which is a list of tuples. The first element of the 
+    tuple is a string representing the probability law, and the second element is
+    a float of the value of the probability law.
+    """
+    if verbose:
+        print(data)
+
+    # save a copy of the original data set
+    original_data = data.copy()
+    # initialize a size variable
+    size = len(data)
+    if verbose:
+        print('size of original data set:', size)
+
+    # initialize the output list
+    probability_table = []
+
+    # create a copy of the original data set
+    data = original_data.copy()
+    # first calculate P(Y=1 | X=1)
+    # subset the data to rows where Z=1
+    data = data[data[Z] == 1]
+    size = len(data)
+    if verbose:
+        print('rows of data where ' + Z + '=1', len(data))
+        print('size of subsetted data set:', size)
+    # find the rows of data where Y=1 in the subsetted data set
+    probability_table.append(('P(Y=1 | ' + Z + '=1', len(data[data[Y] == 1])/size))
+
+    # create a copy of the original data set
+    data = original_data.copy()
+    # first calculate P(Y=1 | X=1)
+    # subset the data to rows where Z=1
+    data = data[data[Z] == 0]
+    size = len(data)
+    if verbose:
+        print('rows of data where ' + Z + '=0', len(data))
+        print('size of subsetted data set:', size)
+    # find the rows of data where Y=1 in the subsetted data set
+    probability_table.append(('P(Y=1 | ' + Z + '=0', len(data[data[Y] == 1])/size))
 
     return probability_table
 
