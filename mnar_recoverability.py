@@ -25,7 +25,7 @@ def estimateProbability(Y, Z, data):
     if len(Z) == 0:
         # divide by the size of the whole data set
         size = len(data)
-        probability_table.append(('P(Y=1)', len(data[data[Y] == 1])/size))
+        probability_table.append(('P('+Y+'=1)', len(data[data[Y] == 1])/size))
         return probability_table
 
     binstrings = 2**len(Z)
@@ -38,7 +38,7 @@ def estimateProbability(Y, Z, data):
         this_state = format(i, format_string)
 
         # create string representing this state
-        state_string = 'P(Y=1 | '
+        state_string = 'P('+Y+'=1 | '
 
         # initialize a counter
         ctr = 0
@@ -107,7 +107,55 @@ def estimateProbabilityTwoVar(Y, Z, data, verbose=False):
 
     return probability_table
 
-def computeConfidenceIntervals(Y, Z, data, num_bootstraps=200, alpha=0.05):
+def shadowRecovery(Y, X, RX, full_data):
+    """
+    Given two binary variables Y, fully observed, and X, self-censoring, uses the matrix 
+    insight to recover P(X) as defined by P(Y) = \sum P(Y | X)P(X) with the data set
+    full_data. RX is a string containing the name of the missingness indicator for X.
+
+    Let the inverse matrix of P(Y | X) be denoted as [[a, b], [c, d]]. Then, P(X=1) =
+    P(Y=1)*(a-b) + b
+
+    Returns a probability table which is a list of tuples. The first element of the 
+    tuple is a string representing the probability law, and the second element is
+    a float of the value of the probability law.
+    """
+    # estimate P(Y=1) using the fully observed data set
+    probability_table_PY = estimateProbability(Y, [], full_data)
+
+    # subset the data to be rows where X is observed
+    partial_data = full_data.copy()
+    partial_data = partial_data[partial_data[RX] == 0]
+
+    # estimate P(Y=1 | X=1) and P(Y=1 | X=0) using the partially observed data set
+    probability_table_PY_X = estimateProbability(Y, [X], partial_data)
+
+    # grab the value of P(Y=1) from the probability table
+    PY1 = probability_table_PY[0][1]
+    # grab the value of P(Y=1 | X=0) from the probability table
+    PY1_X0 = probability_table_PY_X[0][1]
+    # grab the value of P(Y=1 | X=1) from the probability table
+    PY1_X1 = probability_table_PY_X[1][1]
+
+    # create the matrix representing P(Y | X)
+    A = [[PY1_X1, PY1_X0], [(1-PY1_X1), (1-PY1_X0)]]
+
+    # calculate the inverse of A
+    A_inv = np.linalg.inv(A)
+    
+    # calculate P(X=1)
+    a = A_inv[0][0]
+    b = A_inv[0][1]
+    PX1 = PY1*(a-b) + b
+
+    # create a probability table with one element: P(X=1)
+    probability_table = []
+    probability_table.append(('P('+X+'=1)', PX1))
+
+    return probability_table
+
+
+def computeConfidenceIntervals(Y, Z, data, method, RX='', num_bootstraps=200, alpha=0.05):
     """
     Compute confidence intervals for estimating probabilities using bootstrap.
 
@@ -126,7 +174,12 @@ def computeConfidenceIntervals(Y, Z, data, num_bootstraps=200, alpha=0.05):
         bootstrap_data.reset_index(drop=True, inplace=True)
 
         # add estimate from resampled data
-        output = estimateProbability(Y, Z, bootstrap_data)
+        output = []
+        if method == 'estimateProbability':
+            output = estimateProbability(Y, Z, bootstrap_data)
+        elif method == 'shadowRecovery':
+            output = shadowRecovery(Y, Z, RX, bootstrap_data)
+        
         for estimate in output:
             # if this conditional probability not in estimates yet, initialize an 
             # empty list
@@ -161,20 +214,16 @@ def testShadowGraph(verbose=False):
     # around 0.62 of rows of data of Y are 1
     # Y has no parents, so it does not depend on any other variables
     Y = np.random.binomial(1, 0.62, size)
-    if verbose:
-        print('proportion of Y=1:', np.bincount(Y)[1]/size)
 
     # around 0.52 of rows of data of X are 1
     # toggle one of the following DGP processes:
     X = np.random.binomial(1, expit(Y*0.7-0.4), size)
     #X = np.random.binomial(1, 0.52, size)
-    if verbose:
-        print('proportion of X=1:', np.bincount(X)[1]/size)
     
     # generate the missingness mechanism of X, around 0.29 of the rows of X are
     # missing
     # toggle one of the following DGP processes:
-    RX = np.random.binomial(1, expit(X-1.7), size)
+    RX = np.random.binomial(1, expit(X-1.6), size)
     #RX = np.random.binomial(1, 0.28, size)
     #RX = np.random.binomial(1, expit(Y-2), size)
     if verbose:
@@ -183,13 +232,13 @@ def testShadowGraph(verbose=False):
     assert RX.sum() <= 0.3*size, 'too many missing values in X'
 
     # create the fully observed data set
-    full_data = pd.DataFrame({"Y": Y, "X": X})
+    full_data = pd.DataFrame({"Y": Y, "X": X, "RX": RX})
 
     # create the partially observed data set
     Xstar = X.copy()
     # set missing values to -1 to denote a ? whenever RX == 1
     Xstar[RX == 1] = -1
-    partial_data = pd.DataFrame({"Y": Y, "X": Xstar})
+    partial_data = pd.DataFrame({"Y": Y, "X": Xstar, "RX": RX})
     # drop the rows of data where X is unobserved
     partial_data = partial_data[partial_data["X"] != -1]
 
@@ -197,9 +246,8 @@ def testShadowGraph(verbose=False):
     print()
     print('fully observed data set')
     print('P(Y):', estimateProbability("Y", [], full_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y", [], full_data))
     print('P(Y | X):', estimateProbability("Y", ["X"], full_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y", ["X"], full_data))
+    print('P(X):', estimateProbability("X", [], full_data))
 
     # estimate the conditional probabilities for the partially observed data set
     # note that every single probability calculated here has RX=0 past the
@@ -207,9 +255,11 @@ def testShadowGraph(verbose=False):
     print()
     print('partially observed data set')
     print('P(Y):', estimateProbability("Y", [], partial_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y", [], partial_data))
+    print('confidence intervals:', computeConfidenceIntervals("Y", [], partial_data, 'estimateProbability'))
     print('P(Y | X):', estimateProbability("Y", ["X"], partial_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y", ["X"], partial_data))
+    print('confidence intervals:', computeConfidenceIntervals("Y", ["X"], partial_data, 'estimateProbability'))
+    print('P(X):', shadowRecovery("Y", "X", "RX", full_data))
+    print('confidence intervals:', computeConfidenceIntervals("Y", "X", full_data, 'shadowRecovery', RX="RX"))
 
 if __name__ == "__main__":
     np.random.seed(10)
