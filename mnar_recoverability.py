@@ -154,8 +154,81 @@ def shadowRecovery(Y, X, RX, full_data):
 
     return probability_table
 
+def shadowRecoveryDim2(Y, X, RX, C, partial_data):
+    """
+    Given two binary variables Y, fully observed, X, self-censoring, and C, self-censoring 
+    uses the matrix insight to recover P(X | C) as defined by P(Y|C) = \sum P(Y | X,C)P(X|C) 
+    with the data set partial_data that has been subsetted to rows of observed C. RX is a 
+    string containing the name of the missingness indicator for X.
 
-def computeConfidenceIntervals(Y, Z, data, method, RX='', num_bootstraps=200, alpha=0.05):
+    Let the inverse matrix of P(Y | X,C=0) be denoted as [[a, b], [c, d]]. Then, P(X=1|C=0) =
+    P(Y=1|C=0)*(a-b) + b
+
+    Let the inverse matrix of P(Y | X,C=1) be denoted as [[a, b], [c, d]]. Then, P(X=1|C=1) =
+    P(Y=1|C=1)*(a-b) + b
+
+    Returns a probability table which is a list of tuples. The first element of the 
+    tuple is a string representing the probability law, and the second element is
+    a float of the value of the probability law.
+    """
+    # estimate P(Y | C) using the data set subsetted to observed rows of C
+    probability_table_PY_C = estimateProbability(Y, [C], partial_data)
+    #print(probability_table_PY_C)
+    
+    # subset the data set to observed rows of X
+    partial_data_RX = partial_data.copy()
+    partial_data_RX = partial_data_RX[partial_data_RX[RX] == 0]
+
+    # estimate P(Y | X,C) using the data set subsetted to observed rows of C and X
+    probability_table_PY_XC = estimateProbability(Y, [X,C], partial_data_RX)
+    #print(probability_table_PY_XC)
+    
+    # grab the value of P(Y=1 | C=0) from the probability table
+    PY1_C0 = probability_table_PY_C[0][1]
+    # grab the value of P(Y=1 | X=0,C=0) from the probability table
+    PY1_X0C0 = probability_table_PY_XC[0][1]
+    # grab the value of P(Y=1 | X=1,C=0) from the probability table
+    PY1_X1C0 = probability_table_PY_XC[2][1]
+
+    # create the matrix representing P(Y | X,C=0)
+    A_C0 = [[PY1_X1C0, PY1_X0C0], [(1-PY1_X1C0), (1-PY1_X0C0)]]
+
+    # calculate the inverse of of A_C0
+    A_C0_inv = np.linalg.inv(A_C0)
+
+    # calculate P(X=1 | C=0)
+    a = A_C0_inv[0][0]
+    b = A_C0_inv[0][1]
+    PX1_C0 = PY1_C0*(a-b) + b
+
+    # create a probability table and append the probability of P(X=1 | C=0)
+    probability_table = []
+    probability_table.append(('P('+X+'=1 | '+C+'=0)', PX1_C0))
+
+    # grab the value of P(Y=1 | C=1) from the probability table
+    PY1_C1 = probability_table_PY_C[1][1]
+    # grab the value of P(Y=1 | X=0,C=1) from the probability table
+    PY1_X0C1 = probability_table_PY_XC[1][1]
+    # grab the value of P(Y=1 | X=1,C=1) from the probability table
+    PY1_X1C1 = probability_table_PY_XC[3][1]
+
+    # create the matrix representing P(Y | X,C=0)
+    A_C1 = [[PY1_X1C1, PY1_X0C1], [(1-PY1_X1C1), (1-PY1_X0C1)]]
+
+    # calculate the inverse of of A_C1
+    A_C1_inv = np.linalg.inv(A_C1)
+
+    # calculate P(X=1 | C=1)
+    a = A_C1_inv[0][0]
+    b = A_C1_inv[0][1]
+    PX1_C1 = PY1_C1*(a-b) + b
+
+    # append the probability of P(X=1 | C=1)
+    probability_table.append(('P('+X+'=1 | '+C+'=1)', PX1_C1))
+
+    return probability_table
+
+def computeConfidenceIntervals(Y, Z, data, method, RX='', C='', num_bootstraps=200, alpha=0.05):
     """
     Compute confidence intervals for estimating probabilities using bootstrap.
 
@@ -179,6 +252,8 @@ def computeConfidenceIntervals(Y, Z, data, method, RX='', num_bootstraps=200, al
             output = estimateProbability(Y, Z, bootstrap_data)
         elif method == 'shadowRecovery':
             output = shadowRecovery(Y, Z, RX, bootstrap_data)
+        elif method == 'shadowRecoveryDim2':
+            output = shadowRecoveryDim2(Y, Z, RX, C, bootstrap_data)
         
         for estimate in output:
             # if this conditional probability not in estimates yet, initialize an 
@@ -205,7 +280,8 @@ def testShadowGraph(verbose=False):
     shadow graph. Both Y and X are binary variables. RX is the missingness indicator for the
     variable X. RX=1 indicates that the value of X is missing, and RX=0 indicates that the
     value of X is observed.
-    Then test the full law of the shadow graph using conditional probabilities.
+    This function then tests the recoverability of the full law of the shadow graph using 
+    conditional probabilities.
     """
     size = 5000
     if verbose:
