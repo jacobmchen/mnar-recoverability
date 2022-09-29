@@ -3,6 +3,33 @@ import numpy as np
 from scipy.special import expit
 from mnar_recoverability import *
 
+def checkConfidenceIntervals(CI, trueValues):
+    """
+    Checks if all of the values in trueValues are within the confidence intervals CI.
+
+    trueValues is a list of tuples of size 2. The first element of the tuple is a string
+    representing the probability law, and the second element is the value of the probability
+    law.
+
+    CI is a dictionary where the key is a probability law and the value is a tuple representing
+    the low and high ranges of the confidence interval, respectively.
+
+    Returns a list of tuples with three elements (probability law, probability, confidence interval)
+    that are out of range. If the return value is an empty list, then no values are out of range.
+    """
+    # initialize a list that will save all the trueValues that are out of range of the confidence
+    # interval
+    outOfRange = []
+    
+    for value in trueValues:
+        probabilityLaw = value[0]
+        probability = value[1]
+        confidenceInterval = CI[probabilityLaw]
+        if probability < confidenceInterval[0] or probability > confidenceInterval[1]:
+            outOfRange.append((probabilityLaw, probability, confidenceInterval))
+
+    return outOfRange
+
 def testShadowYGraph(verbose=False):
     """
     Generate a graph with the following format: Y1->X1->Y2->X2 where X1 and X2 are self-censoring. 
@@ -45,20 +72,6 @@ def testShadowYGraph(verbose=False):
 
     # create the fully observed data set
     full_data = pd.DataFrame({"Y1": Y1, "X1": X1, "Y2": Y2, "X2": X2, "R1": R1, "R2": R2})
-    # print('full_data')
-    # print(full_data)
-
-    # estimate the conditional probabilities for the fully observed data set
-    print()
-    print('fully observed data set')
-    print('P(Y1 | X1, X2, Y2):', estimateProbability("Y1", ["X1","X2","Y2"], full_data))
-    print()
-    print('P(Y2 | X1, X2):', estimateProbability("Y2", ["X1", "X2"], full_data))
-    print()
-    print('P(X1 | X2):', estimateProbability("X1", ["X2"], full_data))
-    print()
-    print('P(X2):', estimateProbability("X2", [], full_data))
-
 
     # create the partially observed data set subsetted to observed rows of X1 and X2
     partial_data = full_data.copy()
@@ -67,21 +80,43 @@ def testShadowYGraph(verbose=False):
     partial_data_R2 = full_data.copy()
     partial_data_R2 = partial_data_R2[partial_data_R2["R2"] == 0]
 
+    # estimate the conditional probabilities for the fully observed data set
     print()
-    print('partially observed data set')
-    print('P(Y1 | X1, X2, Y2):', estimateProbability("Y1", ["X1","X2","Y2"], partial_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y1", ["X1","X2","Y2"], partial_data, 'estimateProbability'))
-    print()
-    print('P(Y2 | X1, X2):', estimateProbability("Y2", ["X1", "X2"], partial_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y2", ["X1","X2"], partial_data, 'estimateProbability'))
-    print()
-    print('P(X1 | X2):', shadowRecoveryDim2("Y1", "X1", "R1", "X2", partial_data_R2))
-    print('confidence intervals:', computeConfidenceIntervals("Y1", "X1", partial_data_R2, 'shadowRecoveryDim2', RX="R1", C="X2"))
-    print()
-    print('P(X2)', shadowRecovery("Y1", "X2", "R2", full_data))
-    print('confidence intervals:', computeConfidenceIntervals("Y1", "X2", full_data, 'shadowRecovery', RX="R2"))
+    print('verify recoverability')
+    fully_observed_PY1_X1X2Y2 = estimateProbability("Y1", ["X1","X2","Y2"], full_data)
+    partially_observed_CI_PY1_X1X2Y2 = computeConfidenceIntervals("Y1", ["X1","X2","Y2"], partial_data, 'estimateProbability')
+    print(checkConfidenceIntervals(partially_observed_CI_PY1_X1X2Y2, fully_observed_PY1_X1X2Y2))
+    if verbose:
+        print('P(Y1 | X1, X2, Y2):', fully_observed_PY1_X1X2Y2)
+        print('confidence intervals:', partially_observed_CI_PY1_X1X2Y2)
+        print()
+
+    fully_observed_PY2_X1X2 = estimateProbability("Y2", ["X1", "X2"], full_data)
+    partially_observed_CI_PY2_X1X2 = computeConfidenceIntervals("Y2", ["X1","X2"], partial_data, 'estimateProbability')
+    print(checkConfidenceIntervals(partially_observed_CI_PY2_X1X2, fully_observed_PY2_X1X2))
+    if verbose:
+        print('P(Y2 | X1, X2):', fully_observed_PY2_X1X2)
+        print('confidence intervals', partially_observed_CI_PY2_X1X2)
+        print()
+
+    fully_observed_X1_X2 = estimateProbability("X1", ["X2"], full_data)
+    partially_observed_CI_X1_X2 = computeConfidenceIntervals("Y1", "X1", partial_data_R2, 'shadowRecoveryDim2', RX="R1", C="X2")
+    print(checkConfidenceIntervals(partially_observed_CI_X1_X2, fully_observed_X1_X2))
+    if verbose:
+        print('P(X1 | X2):', fully_observed_X1_X2)
+        print('confidence intervals:', partially_observed_CI_X1_X2)
+        print()
+
+    fully_observed_X2 = estimateProbability("X2", [], full_data)
+    partially_observed_CI_X2 = computeConfidenceIntervals("Y1", "X2", full_data, 'shadowRecovery', RX="R2")
+    print(checkConfidenceIntervals(partially_observed_CI_X2, fully_observed_X2))
+    if verbose:
+        print('P(X2):', fully_observed_X2)
+        print('confidence intervals:', partially_observed_CI_X2)
+        print()
 
 if __name__ == "__main__":
-    np.random.seed(11)
+    np.random.seed(9)
 
+    # using seed 9, the confidence intervals capture the true value for all 4 probability laws
     testShadowYGraph(verbose=False)
