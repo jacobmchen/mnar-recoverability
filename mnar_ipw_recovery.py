@@ -16,7 +16,7 @@ def shadowIpwFun(x, Y, X, R, data):
     
     return [output1, output2]
 
-def computeConfidenceIntervals(Y, X, R, data, value, num_bootstraps=200, alpha=0.05):
+def computeConfidenceIntervalsShadowFix(Y, X, R, data, value, num_bootstraps=200, alpha=0.05):
     Ql = alpha/2
     Qu = 1 - alpha/2
 
@@ -93,11 +93,25 @@ def testShadowGraph(verbose=False):
     # find the roots of the IPW shadow function
     sol = optimize.root(shadowIpwFun, [0.0, 1.0], args=("Y", "X", "RX", obs_data), method='hybr')
     print("P(RX=1 | X=0):", expit(sol.x[0]))
-    print("conf intervals", computeConfidenceIntervals("Y", "X", "RX", obs_data, "X=0"))
+    print("conf intervals", computeConfidenceIntervalsShadowFix("Y", "X", "RX", obs_data, "X=0"))
     print("R(RX=1 | X=1):", expit(sol.x[0])/(expit(sol.x[0]) + sol.x[1]*(1-expit(sol.x[0]))))
-    print("conf intervals", computeConfidenceIntervals("Y", "X", "RX", obs_data, "X=1"))
+    print("conf intervals", computeConfidenceIntervalsShadowFix("Y", "X", "RX", obs_data, "X=1"))
+
+    # store the propensity score as a tuple with two elements, the first element represents
+    # p(R=1 | X=0) and the second element represents p(R=1 | X=1)
+    propensity_score_RX = (expit(sol.x[0]), expit(sol.x[0])/(expit(sol.x[0]) + sol.x[1]*(1-expit(sol.x[0]))))
+
+    # create the weights for re-weighting the dataset
+    partial_data["weights"] = 1 / (propensity_score_RX[0]**(1-partial_data["X"]) + propensity_score_RX[1]**(partial_data["X"]) - 1)
+
+    # re-weight the dataset by sampling according to their weights
+    weighted_partial_data = partial_data.sample(n=len(partial_data), replace=True, weights="weights")
+
+    print("fully observed dataset", estimateProbability("X", [], full_data))
+    print("reweighted dataset P(X):", np.average(weighted_partial_data["X"]))
+    print("confidence intervals", computeConfidenceIntervals("X", [], weighted_partial_data, "estimateProbability"))
 
 if __name__ == "__main__":
-    np.random.seed(10)
+    np.random.seed(15)
 
     testShadowGraph(verbose=True)
