@@ -32,11 +32,12 @@ def checkConfidenceIntervals(CI, trueValues):
 
 def testShadowYGraph(verbose=False):
     """
-    Generate a graph with the following format: Y1->X1->Y2->X2 where X1 and X2 are self-censoring. 
-    We refer to this graph as the shadow graph where n=2. All variables are binary variables. R1 
+    Generate a graph with the following format: Y1->X1, Y2->X1, X1->X2 where X1 and X2 are 
+    self-censoring. 
+    We refer to this graph as the shadow Y. All variables are binary variables. R1 
     is the missingness indicator for the variable X1 while R2 is the missingness indicator for the
-    variable X2. RX=1 indicates that the value of X is missing, and RX=0 indicates that the
-    value of X is observed.
+    variable X2. R1=1 indicates that the value of X is missing, and R1=0 indicates that the
+    value of X1 is observed.
     This function then tests the recoverability of the full law of the shadow graph using 
     conditional probabilities.
     """
