@@ -14,7 +14,7 @@ def findPropensityScore(a, g):
     """
     return (expit(a), expit(a) / (expit(a) + g*(1-expit(a))))
 
-def testShadowYGraph(verbose=False):
+def testShadowYGraph(size=5000, verbose=False, datasets=False):
     """
     Generate a graph with the following format: Y1->X1, Y2->X1, X1->X2, Y1->X2 where X1 and X2 are self-censoring. 
     We refer to this graph as the shadow partial Y graph. All variables are binary variables. R1 
@@ -23,8 +23,10 @@ def testShadowYGraph(verbose=False):
     value of X1 is missing.
     This function then uses the fixing technique to reweight the dataset according to the probability
     functions p(R1=1 | X1) and p(R2=1 | X2).
+
+    When datasets is turned to True, this function returns a 4 tuple in the form of (full_data, obs_data,
+    partial_data, weighted_partial_data)
     """
-    size = 5000
     if verbose:
         print("size:", size)
 
@@ -46,7 +48,7 @@ def testShadowYGraph(verbose=False):
         print('proportion of R1=1', np.bincount(R1)[1]/size)
 
     # around of 0.57 rows of X2 are 1
-    X2 = np.random.binomial(1, expit(X1*1.5+Y1-1.6), size)
+    X2 = np.random.binomial(1, expit(X1*1.5+Y1-1.4), size)
 
     # generate the missingness mechanism of X2, around 0.29 of the rows of X2 are
     # missing
@@ -99,6 +101,13 @@ def testShadowYGraph(verbose=False):
     partial_data["weights"] = 1 / (scores_R1*scores_R2)
 
     weighted_partial_data = partial_data.sample(n=len(partial_data), replace=True, weights="weights")
+
+    if datasets:
+        # drop the missingness indicators and weights from the weighted_partial_data set
+        weighted_partial_data.pop("R1")
+        weighted_partial_data.pop("R2")
+        weighted_partial_data.pop("weights")
+        return (full_data, obs_data, partial_data, weighted_partial_data)
 
     if verbose:
         print("full data", estimateProbability("X1", [], full_data))
