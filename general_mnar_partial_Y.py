@@ -22,7 +22,7 @@ def generateData(size=5000, verbose=False):
     obs_data is the full dataset where missing values of A and Y are replaced with -1.
     partial_data is the dataset where missing values of A and Y are dropped.
     weighted_partial_data is the dataset where partial_data is reweighted according to the
-    propensity scores p(R_A | A) and p(R_Y | Y, R_A).
+    propensity scores p(R_A | A) and p(R_Y | Y, A, R_A).
     """
     if verbose:
         print("size:", size)
@@ -35,15 +35,15 @@ def generateData(size=5000, verbose=False):
     if verbose:
         print('proportion of A=1', np.bincount(A)[1]/size)
 
-    RA = np.random.binomial(1, expit(A+0.5), size)
+    RA = np.random.binomial(1, expit(A*2), size)
     if verbose:
         print('proportion of RA=1', np.bincount(RA)[1]/size)
 
-    Y = np.random.binomial(1, expit(A*1.5+W1-1.4), size)
+    Y = np.random.binomial(1, expit(A*2+W1-1.4), size)
     if verbose:
         print('proportion of Y=1', np.bincount(Y)[1]/size)
 
-    RY = np.random.binomial(1, expit(1.2*RA+Y-0.4), size)
+    RY = np.random.binomial(1, expit(RA*1.2+Y*1.5+A*1.5-1.2), size)
     if verbose:
         print('proportion of RY=1', np.bincount(RY)[1]/size)
         print()
@@ -74,47 +74,52 @@ def generateData(size=5000, verbose=False):
         print("shadow recovery p(RA=1 | A=1)", propensity_score_RA[1])
         print()
 
-    # calculate the propensity score p(R_Y | Y, R_A)
-    # create two datasets, one where all of RA=1 and one where all of RA=0
+    # calculate the propensity score p(R_Y | Y, A, R_A=1)
+    # drop rows of data where A is missing
     obs_data_RA1 = obs_data[obs_data["RA"] == 1]
-    obs_data_RA0 = obs_data[obs_data["RA"] == 0]
 
-    roots_RY_RA1 = optimize.root(shadowIpwFun, [0.0, 1.0], args=("W1", "Y", "RY", obs_data_RA1), method='hybr')
-    roots_RY_RA0 = optimize.root(shadowIpwFun, [0.0, 1.0], args=("W1", "Y", "RY", obs_data_RA0), method='hybr')
-    propensity_score_RY_RA1 = findPropensityScore(roots_RY_RA1.x[0], roots_RY_RA1.x[1])
-    propensity_score_RY_RA0 = findPropensityScore(roots_RY_RA0.x[0], roots_RY_RA0.x[1])
+    # create datasets where A=1 and A=0
+    obs_data_RA1_A1 = obs_data_RA1[obs_data_RA1["A"] == 1]
+    obs_data_RA1_A0 = obs_data_RA1[obs_data_RA1["A"] == 0]
 
-    # create a 4-tuple representing the propensity score p(RY | Y, RA) in the form
-    # (p(RY=1 | Y=0, RA=0), p(RY=1 | Y=0, RA=1), p(RY=1 | Y=1, RA=0), p(RY=1 | Y=1, RA=1))
-    propensity_score_RY = (propensity_score_RY_RA0[0], propensity_score_RY_RA1[0], propensity_score_RY_RA0[1], propensity_score_RY_RA1[1])
+    # recover the propensity score for p(R_Y | Y, A, R_A=1) using the shadow IPW method twice, once where A=1 and
+    # once where A=0
+    roots_RY_RA1_A1 = optimize.root(shadowIpwFun, [0.0, 1.0], args=("W1", "Y", "RY", obs_data_RA1_A1), method='hybr')
+    roots_RY_RA1_A0 = optimize.root(shadowIpwFun, [0.0, 1.0], args=("W1", "Y", "RY", obs_data_RA1_A0), method='hybr')
+    propensity_score_RY_RA1_A1 = findPropensityScore(roots_RY_RA1_A1.x[0], roots_RY_RA1_A1.x[1])
+    propensity_score_RY_RA1_A0 = findPropensityScore(roots_RY_RA1_A0.x[0], roots_RY_RA1_A0.x[1])
+
+    # create a 4-tuple representing the propensity score p(RY | Y, A, RA=1) in the form
+    # (p(RY=1 | Y=0, A=0, RA=1), p(RY=1 | Y=0, A=1, RA=1), p(RY=1 | Y=1, A=0, RA=1), p(RY=1 | Y=1, A=1, RA=1))
+    propensity_score_RY = (propensity_score_RY_RA1_A0[0], propensity_score_RY_RA1_A1[0], propensity_score_RY_RA1_A0[1], propensity_score_RY_RA1_A1[1])
     if verbose:
         print("verify propensity scores")
-        print("full data", estimateProbability("RY", ["Y", "RA"], full_data))
-        print("shadow recovery p(RY=1 | Y=0, RA=0)", propensity_score_RY[0])
-        print("shadow recovery p(RY=1 | Y=0, RA=1)", propensity_score_RY[1])
-        print("shadow recovery p(RY=1 | Y=1, RA=0)", propensity_score_RY[2])
-        print("shadow recovery p(RY=1 | Y=1, RA=1)", propensity_score_RY[3])
+        print("full data", estimateProbability("RY", ["Y", "A", "RA"], full_data))
+        print("shadow recovery p(RY=1 | Y=0, A=0, RA=1)", propensity_score_RY[0])
+        print("shadow recovery p(RY=1 | Y=0, A=1, RA=1)", propensity_score_RY[1])
+        print("shadow recovery p(RY=1 | Y=1, A=0, RA=1)", propensity_score_RY[2])
+        print("shadow recovery p(RY=1 | Y=1, A=1, RA=1)", propensity_score_RY[3])
         print()
 
     # calculate the propensity score for each row of data
     scores_RA = propensity_score_RA[0]**(1-partial_data["A"]) + propensity_score_RA[1]**(partial_data["A"]) - 1
-    scores_RY = ( propensity_score_RY[0]**( (1-partial_data["Y"])*(1-partial_data["RA"]) ) +
-                  propensity_score_RY[1]**( (1-partial_data["Y"])*(partial_data["RA"]) ) +
-                  propensity_score_RY[2]**( (partial_data["Y"])*(1-partial_data["RA"]) ) +
-                  propensity_score_RY[3]**( (partial_data["Y"])*(partial_data["RA"]) ) - 3)
+    scores_RY = ( propensity_score_RY[0]**( (1-partial_data["Y"])*(1-partial_data["A"]) ) +
+                  propensity_score_RY[1]**( (1-partial_data["Y"])*(partial_data["A"]) ) +
+                  propensity_score_RY[2]**( (partial_data["Y"])*(1-partial_data["A"]) ) +
+                  propensity_score_RY[3]**( (partial_data["Y"])*(partial_data["A"]) ) - 3)
     
     # create the weights according to the propensity scores
     partial_data["weights"] = 1 / (scores_RA*scores_RY)
 
-    # resample the dataset using the weights
+    # resample the dataset using the weights, this is the fixing in parallel operation
     weighted_partial_data = partial_data.sample(n=len(partial_data), replace=True, weights="weights")
 
     return (full_data, obs_data, partial_data, weighted_partial_data)
 
 if __name__ == "__main__":
-    np.random.seed(10)
+    np.random.seed(11)
 
-    full_data, obs_data, partial_data, weighted_partial_data = generateData(size=6000, verbose=False)
+    full_data, obs_data, partial_data, weighted_partial_data = generateData(size=60000, verbose=False)
 
     # get rid of columns of data that we don't need for causal discovery
     weighted_partial_data.pop("RA")
@@ -141,14 +146,14 @@ if __name__ == "__main__":
     G, edges = fci(weighted_partial_data.to_numpy(), background_knowledge=bk)
     print(G)
 
-    # print("running FCI algorithm using partial dataset")
-    # G, edges = fci(partial_data.to_numpy(), background_knowledge=bk)
-    # print(G)
+    print("running FCI algorithm using partial dataset")
+    G, edges = fci(partial_data.to_numpy(), background_knowledge=bk)
+    print(G)
 
     # run the GES causal discovery algorithm
-    print("running GES algorithm using reweighted dataset")
-    record = ges(weighted_partial_data.to_numpy())
-    print(record['G'])
+    # print("running GES algorithm using reweighted dataset")
+    # record = ges(weighted_partial_data.to_numpy())
+    # print(record['G'])
 
     # print("running GES algorithm using partial dataset")
     # record = ges(partial_data.to_numpy())
@@ -156,13 +161,14 @@ if __name__ == "__main__":
 
     # estimate the causal effect
     print("estimate causal effect of A on Y")
+    print("full dataset")
     print(backdoor_adjustment_binary("Y", "A", ["W1"], full_data))
 
     print("weighted dataset")
     print(backdoor_adjustment_binary("Y", "A", ["W1"], weighted_partial_data))
-    print(compute_confidence_intervals("Y", "A", ["W1"], weighted_partial_data, "backdoor_binary"))
+    # print(compute_confidence_intervals("Y", "A", ["W1"], weighted_partial_data, "backdoor_binary"))
 
     print("partial dataset")
     print(backdoor_adjustment_binary("Y", "A", ["W1"], partial_data))
-    print(compute_confidence_intervals("Y", "A", ["W1"], partial_data, "backdoor_binary"))
+    # print(compute_confidence_intervals("Y", "A", ["W1"], partial_data, "backdoor_binary"))
 
