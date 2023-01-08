@@ -65,10 +65,10 @@ def shadowIpwFunctional_Y(params, W_1, W_2, R_Y, Y, data):
     pRY_Y_0 = expit(params[0]+params[1]*data[W_2])
     pRY_1 = pRY_Y_0 / (pRY_Y_0 + ((params[2]+params[3]*data[W_2])**data[Y])*(1-pRY_Y_0))
 
-    output1 = np.average( (data[W_1]*data[R_Y]) / pRY_1 - data[W_1] )
-    output2 = np.average( ((1-data[W_1])*data[R_Y]) / pRY_1 - (1-data[W_1]) )
-    output3 = np.average( (data[W_1]*data[W_2]*data[R_Y]) / pRY_1 - data[W_1]*data[W_2] )
-    output4 = np.average( (data[W_1]*(data[W_2]**2)*data[R_Y]) / pRY_1 - data[W_1]*(data[W_2]**2) )
+    output1 = np.average( ((data[W_1]*data[W_2])*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]) )
+    output2 = np.average( ((data[W_1]*data[W_2]+1)*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]+1) )
+    output3 = np.average( ((data[W_1]*data[W_2]**2)*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]**2) )
+    output4 = np.average( ((data[W_1]*data[W_2]**2+1)*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]**2+1) )
 
     return [output1, output2, output3, output4]
 
@@ -95,8 +95,8 @@ def shadowIpwFunctional_A(params, W_1, R_A, A, data):
     pRA_A_0 = expit(params[0])
     pRA_1 = pRA_A_0 / (pRA_A_0 + ((params[1])**data[A])*(1-pRA_A_0))
 
-    output1 = np.average( (data[W_1]*data[R_A]) / pRA_1 - data[W_1] )
-    output2 = np.average( ((1-data[W_1])*data[R_A]) / pRA_1 - (1-data[W_1]) )
+    output1 = np.average( ((data[W_1]*data[R_A])) / pRA_1 - (data[W_1]) )
+    output2 = np.average( ((data[W_1]**2)*data[R_A]) / pRA_1 - (data[W_1]**2) )
 
     return [output1, output2]
 
@@ -118,19 +118,19 @@ if __name__ == "__main__":
     roots_RA = optimize.root(shadowIpwFunctional_A, [0.0, 1.0], args=("W1", "R_A", "A", partial_data), method='hybr')
     print(roots_RA.x)
 
-    # # drop rows of data where A=1
-    # full_data_A_0 = full_data[full_data["A"] == 0]
-    # print(np.average(full_data_A_0["R_A"]))
+    # drop rows of data where A=1
+    full_data_A_0 = full_data[full_data["A"] == 0]
+    print(np.average(full_data_A_0["R_A"]))
     
-    # # drop rows of data where A=0
-    # full_data_A_1 = full_data[full_data["A"] == 1]
-    # print(np.average(full_data_A_1["R_A"]))
+    # drop rows of data where A=0
+    full_data_A_1 = full_data[full_data["A"] == 1]
+    print(np.average(full_data_A_1["R_A"]))
 
-    # # drop rows of data where R_A=0
-    # partial_data_A = partial_data[partial_data["R_A"] == 1]
+    # drop rows of data where R_A=0
+    partial_data_A = partial_data[partial_data["R_A"] == 1]
 
-    # print(partial_data_A["A"])
-    # print(rootsPrediction_A(roots_RA.x, "A", partial_data_A))
+    print(partial_data_A["A"])
+    print(rootsPrediction_A(roots_RA.x, "A", partial_data_A))
 
     ##########################
     # caclulate propensity score of p(R_Y | A, W2)
