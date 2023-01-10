@@ -4,6 +4,7 @@ import statsmodels.api as sm
 from scipy.special import expit
 from scipy import optimize
 from adjustment import *
+from shadow_recovery import ShadowRecovery
 
 def generateData(size=5000, verbose=False):
     """
@@ -32,7 +33,6 @@ def generateData(size=5000, verbose=False):
         print("proportion of Y=1:", np.bincount(Y)[1]/size)
 
     # R_A=1 denotes observed value of A
-    # R_A = np.random.binomial(1, expit(2*A+0.3), size)
     params = [0.33, -1.71]
     R_A_temp = expit(params[0]) / ( expit(params[0]) + np.exp(params[1]*A) * (1-expit(params[0])) )
     R_A = np.random.binomial(1, R_A_temp, size)
@@ -120,26 +120,30 @@ if __name__ == "__main__":
 
     full_data, partial_data = generateData(size=5000, verbose=True)
 
-    roots_RA = optimize.root(shadowIpwFunctional_A, [0.0, 1.0], args=("W1", "R_A", "A", partial_data), method='hybr')
-    print(roots_RA.x)
+    # roots_RA = optimize.root(shadowIpwFunctional_A, [0.0, 1.0], args=("W1", "R_A", "A", partial_data), method='hybr')
+    # print(roots_RA.x)
 
-    ##########################
-    # caclulate propensity score of p(R_Y | A, W2)
-    roots_RY = optimize.root(shadowIpwFunctional_Y, [0.0, 0.1], args=("W1", "W2", "R_Y", "Y", partial_data), method='hybr')
-    print(roots_RY.x)
+    # ##########################
+    # # caclulate propensity score of p(R_Y | A, W2)
+    # roots_RY = optimize.root(shadowIpwFunctional_Y, [0.0, 0.1], args=("W1", "W2", "R_Y", "Y", partial_data), method='hybr')
+    # print(roots_RY.x)
 
-    # drop rows of data where R_Y=0 and R_A=0
-    subset_data = partial_data[partial_data["R_A"] == 1]
-    subset_data = subset_data[subset_data["R_Y"] == 1]
+    # # drop rows of data where R_Y=0 and R_A=0
+    # subset_data = partial_data[partial_data["R_A"] == 1]
+    # subset_data = subset_data[subset_data["R_Y"] == 1]
 
-    propensityScore_RA = rootsPrediction_A(roots_RA.x, "A", subset_data)
-    propensityScore_RY = rootsPrediction_Y(roots_RY.x, "W2", "Y", subset_data)
+    # propensityScore_RA = rootsPrediction_A(roots_RA.x, "A", subset_data)
+    # propensityScore_RY = rootsPrediction_Y(roots_RY.x, "W2", "Y", subset_data)
 
-    subset_data["weights"] = 1/(propensityScore_RA*propensityScore_RY)
+    # subset_data["weights"] = 1/(propensityScore_RA*propensityScore_RY)
 
-    reweight_data = subset_data.sample(n=len(subset_data), replace=True, weights="weights")
+    # reweight_data = subset_data.sample(n=len(subset_data), replace=True, weights="weights")
 
-    print(backdoor_adjustment_binary("Y", "A", ["W2"], full_data))
-    print(backdoor_adjustment_binary("Y", "A", ["W2"], reweight_data))
-    print(compute_confidence_intervals("Y", "A", ["W2"], reweight_data, "backdoor_binary"))
+    # print(backdoor_adjustment_binary("Y", "A", ["W2"], full_data))
+    # print(backdoor_adjustment_binary("Y", "A", ["W2"], reweight_data))
+    # print(compute_confidence_intervals("Y", "A", ["W2"], reweight_data, "backdoor_binary"))
+
+    shadowRecovery = ShadowRecovery("A", "R_A", "Y", "R_Y", ["W2"], "W1", partial_data)
+    shadowRecovery.estimateCausalEffect()
+
 
