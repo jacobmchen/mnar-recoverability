@@ -33,6 +33,11 @@ class ShadowRecovery:
         self.Z = Z
         self.S = S
         self.dataset = dataset
+        # drop all rows of data where R_A=0 and R_Y=0
+        self.subset_data = self.dataset[self.dataset[R_A] == 1]
+        self.subset_data = self.subset_data[self.subset_data[R_Y] == 1]
+        # placeholder dataframe to update later
+        self.reweight_data = pd.DataFrame()
 
         # initialize guesses for the parameters of treatment
         self.paramsA = []
@@ -44,9 +49,8 @@ class ShadowRecovery:
         """
         Define the shadow IPW functional for this instance of shadow recovery.
         There are two cases: when Z is empty and when Z is non-empty.
+        X is the self-censoring variable, and R_X is its missingness indicator
         """
-        # X refers to the self-censoring variable
-
         # outputs represent the outputs of this functional
         outputs = []
         
@@ -109,9 +113,43 @@ class ShadowRecovery:
     def _predictPropensityScores(self):
         """
         Predict the propensity scores for the missingness of the treatment and outcome.
+        Predicting the propensity scores depend on the initial functionals used to estimate them.
         """
-        pass
+        if len(self.Z) == 0:
+            # p(R_A = 1 | A = 0)
+            pRA_A_0 = expit(self.paramsA[0])
+            predictionsRA = pRA_A_0 / (pRA_A_0 + np.exp(self.paramsA[1]*self.subset_data[self.A])*(1-pRA_A_0))
+
+            # p(R_Y = 1 | Y = 0)
+            pRY_Y_0 = expit(self.paramsY[0])
+            predictionsRY = pRY_Y_0 / (pRY_Y_0 + np.exp(self.paramsY[1]*self.subset_data[self.Y])*(1-pRY_Y_0))
+
+            return predictionsRA, predictionsRY
+        else:
+            # p(R_A = 1 | A = 0)
+            pRA_A_0 = expit( np.sum(self.paramsA[i]*self.subset_data[self.Z[i]] for i in range(len(self.Z))) )
+            predictionsRA = pRA_A_0 / (pRA_A_0 + np.exp(self.paramsA[len(self.Z)]*self.subset_data[self.A])*(1-pRA_A_0))
+
+            # p(R_Y = 1 | Y = 0)
+            pRY_Y_0 = expit( np.sum(self.paramsY[i]*self.subset_data[self.Z[i]] for i in range(len(self.Z))) )
+            predictionsRY = pRY_Y_0 / (pRY_Y_0 + np.exp(self.paramsY[len(self.Z)]*self.subset_data[self.Y])*(1-pRY_Y_0))
+
+            return predictionsRA, predictionsRY
+    
+    def _reweightData(self):
+        propensityScore_RA, propensityScore_RY = self._predictPropensityScores()
+
+        self.subset_data["weights"] = 1/(propensityScore_RA*propensityScore_RY)
+
+        self.reweight_data = self.subset_data.sample(n=len(self.subset_data), replace=True, weights="weights")
 
     def estimateCausalEffect(self):
         self._findRoots()
+        self._reweightData()
+
         print(self.paramsA, self.paramsY)
+
+        return backdoor_adjustment_binary(self.A, self.Y, self.Z, self.reweight_data)
+
+    def confidenceIntervals(self):
+        return compute_confidence_intervals(self.Y, self.A, self.Z, self.reweight_data, "backdoor_binary")

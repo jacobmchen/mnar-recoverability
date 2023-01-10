@@ -139,11 +139,12 @@ if __name__ == "__main__":
 
     # reweight_data = subset_data.sample(n=len(subset_data), replace=True, weights="weights")
 
-    # print(backdoor_adjustment_binary("Y", "A", ["W2"], full_data))
+    print(backdoor_adjustment_binary("Y", "A", ["W2"], full_data))
     # print(backdoor_adjustment_binary("Y", "A", ["W2"], reweight_data))
     # print(compute_confidence_intervals("Y", "A", ["W2"], reweight_data, "backdoor_binary"))
 
     shadowRecovery = ShadowRecovery("A", "R_A", "Y", "R_Y", ["W2"], "W1", partial_data)
-    shadowRecovery.estimateCausalEffect()
+    print(shadowRecovery.estimateCausalEffect())
+    print(shadowRecovery.confidenceIntervals())
 
 
