@@ -3,6 +3,7 @@ import numpy as np
 import statsmodels.api as sm
 from scipy.special import expit
 from scipy import optimize
+from adjustment import *
 
 def generateData(size=5000, verbose=False):
     """
@@ -43,19 +44,18 @@ def generateData(size=5000, verbose=False):
     pRY_Y_0 = expit(params[0]*W2)
     pRY_1 = pRY_Y_0 / ( pRY_Y_0 + (np.exp(params[1]*Y)) * (1-pRY_Y_0) )
     R_Y = np.random.binomial(1, pRY_1, size)
-    print(R_Y)
     if verbose:
         print("proportion of R_Y=1:", np.bincount(R_Y)[1]/size)
 
     # create fully observed dataset
-    full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y, "pRY_1": pRY_1})
+    full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y})
 
     # create partially observed dataset
     A = full_data["A"].copy()
     A[full_data["R_A"] == 0] = -1
     Y = full_data["Y"].copy()
     Y[full_data["R_Y"] == 0] = -1
-    partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y, "pRY_1": pRY_1})
+    partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y})
 
     return (full_data, partial_data)
 
@@ -123,19 +123,23 @@ if __name__ == "__main__":
     roots_RA = optimize.root(shadowIpwFunctional_A, [0.0, 1.0], args=("W1", "R_A", "A", partial_data), method='hybr')
     print(roots_RA.x)
 
-    # drop rows of data where R_A=0
-    partial_data_A = partial_data[partial_data["R_A"] == 1]
-
-    print(rootsPrediction_A(roots_RA.x, "A", partial_data_A))
-
     ##########################
     # caclulate propensity score of p(R_Y | A, W2)
     roots_RY = optimize.root(shadowIpwFunctional_Y, [0.0, 0.1], args=("W1", "W2", "R_Y", "Y", partial_data), method='hybr')
     print(roots_RY.x)
 
-    # drop rows of data where R_Y=0
-    partial_data_Y = partial_data[partial_data["R_Y"] == 1]
+    # drop rows of data where R_Y=0 and R_A=0
+    subset_data = partial_data[partial_data["R_A"] == 1]
+    subset_data = subset_data[subset_data["R_Y"] == 1]
 
-    print(rootsPrediction_Y(roots_RY.x, "W2", "Y", partial_data_Y))
+    propensityScore_RA = rootsPrediction_A(roots_RA.x, "A", subset_data)
+    propensityScore_RY = rootsPrediction_Y(roots_RY.x, "W2", "Y", subset_data)
 
-    print(np.average(np.abs(partial_data_Y["pRY_1"] - rootsPrediction_Y(roots_RY.x, "W2", "Y", partial_data_Y))))
+    subset_data["weights"] = 1/(propensityScore_RA*propensityScore_RY)
+
+    reweight_data = subset_data.sample(n=len(subset_data), replace=True, weights="weights")
+
+    print(backdoor_adjustment_binary("Y", "A", ["W2"], full_data))
+    print(backdoor_adjustment_binary("Y", "A", ["W2"], reweight_data))
+    print(compute_confidence_intervals("Y", "A", ["W2"], reweight_data, "backdoor_binary"))
+
