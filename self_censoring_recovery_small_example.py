@@ -31,24 +31,31 @@ def generateData(size=5000, verbose=False):
         print("proportion of Y=1:", np.bincount(Y)[1]/size)
 
     # R_A=1 denotes observed value of A
-    R_A = np.random.binomial(1, expit(2*A+0.3), size)
+    # R_A = np.random.binomial(1, expit(2*A+0.3), size)
+    params = [0.33, -1.71]
+    R_A_temp = expit(params[0]) / ( expit(params[0]) + np.exp(params[1]*A) * (1-expit(params[0])) )
+    R_A = np.random.binomial(1, R_A_temp, size)
     if verbose:
         print("proportion of R_A=1:", np.bincount(R_A)[1]/size)
 
     # R_Y=1 denotes observed value of Y
-    R_Y = np.random.binomial(1, expit(2*Y+W2+0.8), size)
+    params = [0.7, -2.71]
+    pRY_Y_0 = expit(params[0]*W2)
+    pRY_1 = pRY_Y_0 / ( pRY_Y_0 + (np.exp(params[1]*Y)) * (1-pRY_Y_0) )
+    R_Y = np.random.binomial(1, pRY_1, size)
+    print(R_Y)
     if verbose:
         print("proportion of R_Y=1:", np.bincount(R_Y)[1]/size)
 
     # create fully observed dataset
-    full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y})
+    full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y, "pRY_1": pRY_1})
 
     # create partially observed dataset
     A = full_data["A"].copy()
     A[full_data["R_A"] == 0] = -1
     Y = full_data["Y"].copy()
     Y[full_data["R_Y"] == 0] = -1
-    partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y})
+    partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "R_A": R_A, "R_Y": R_Y, "pRY_1": pRY_1})
 
     return (full_data, partial_data)
 
@@ -62,23 +69,21 @@ def shadowIpwFunctional_Y(params, W_1, W_2, R_Y, Y, data):
     return values of the functionals based on the parameters
     """
     # p(R_Y=1 | Y=0)
-    pRY_Y_0 = expit(params[0]+params[1]*data[W_2])
-    pRY_1 = pRY_Y_0 / (pRY_Y_0 + ((params[2]+params[3]*data[W_2])**data[Y])*(1-pRY_Y_0))
+    pRY_Y_0 = expit(params[0]*data[W_2])
+    pRY_1 = pRY_Y_0 / ( pRY_Y_0 + (np.exp(params[1]*data[Y])) * (1-pRY_Y_0) )
 
-    output1 = np.average( ((data[W_1]*data[W_2])*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]) )
-    output2 = np.average( ((data[W_1]*data[W_2]+1)*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]+1) )
-    output3 = np.average( ((data[W_1]*data[W_2]**2)*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]**2) )
-    output4 = np.average( ((data[W_1]*data[W_2]**2+1)*data[R_Y]) / pRY_1 - (data[W_1]*data[W_2]**2+1) )
+    output1 = np.average( ((data[W_2])*data[R_Y]) / pRY_1 - (data[W_2]) )
+    output2 = np.average( ((np.average(data[W_1]))*data[R_Y]) / pRY_1 - (np.average(data[W_1])) )
 
-    return [output1, output2, output3, output4]
+    return [output1, output2]
 
 def rootsPrediction_Y(roots, W_2, Y, data):
     """
     Use the values of alpha and gamma contained in roots to make predictions on the value
     Y based on W2.
     """
-    pRY_1_Y_0 = expit(roots[0] + roots[1]*data[W_2])
-    predictions = pRY_1_Y_0 / (pRY_1_Y_0 + (roots[2]+roots[3]*data[W_2])**data[Y]*(1-pRY_1_Y_0))
+    pRY_1_Y_0 = expit(roots[0]*data[W_2])
+    predictions = pRY_1_Y_0 / (pRY_1_Y_0 + (np.exp(roots[1]*data[Y])) * (1-pRY_1_Y_0))
 
     return predictions
 
@@ -93,7 +98,7 @@ def shadowIpwFunctional_A(params, W_1, R_A, A, data):
     """
     # p(R_Y=1 | Y=0)
     pRA_A_0 = expit(params[0])
-    pRA_1 = pRA_A_0 / (pRA_A_0 + ((params[1])**data[A])*(1-pRA_A_0))
+    pRA_1 = pRA_A_0 / (pRA_A_0 + np.exp(params[1]*data[A])*(1-pRA_A_0))
 
     output1 = np.average( ((data[W_1]*data[R_A])) / pRA_1 - (data[W_1]) )
     output2 = np.average( ((data[W_1]**2)*data[R_A]) / pRA_1 - (data[W_1]**2) )
@@ -106,42 +111,31 @@ def rootsPrediction_A(roots, A, data):
     A.
     """
     pRA_A_0 = expit(roots[0])
-    predictions = pRA_A_0 / (pRA_A_0 + (roots[1])**data[A]*(1-pRA_A_0))
+    predictions = pRA_A_0 / (pRA_A_0 + np.exp(roots[1]*data[A])*(1-pRA_A_0))
 
     return predictions
 
 if __name__ == "__main__":
     np.random.seed(10)
 
-    full_data, partial_data = generateData(verbose=True)
+    full_data, partial_data = generateData(size=5000, verbose=True)
 
     roots_RA = optimize.root(shadowIpwFunctional_A, [0.0, 1.0], args=("W1", "R_A", "A", partial_data), method='hybr')
     print(roots_RA.x)
 
-    # drop rows of data where A=1
-    full_data_A_0 = full_data[full_data["A"] == 0]
-    print(np.average(full_data_A_0["R_A"]))
-    
-    # drop rows of data where A=0
-    full_data_A_1 = full_data[full_data["A"] == 1]
-    print(np.average(full_data_A_1["R_A"]))
-
     # drop rows of data where R_A=0
     partial_data_A = partial_data[partial_data["R_A"] == 1]
 
-    print(partial_data_A["A"])
     print(rootsPrediction_A(roots_RA.x, "A", partial_data_A))
 
     ##########################
     # caclulate propensity score of p(R_Y | A, W2)
-    roots_RY = optimize.root(shadowIpwFunctional_Y, [0.0, 0.0, 1.0, 1.0], args=("W1", "W2", "R_Y", "Y", partial_data), method='hybr')
+    roots_RY = optimize.root(shadowIpwFunctional_Y, [0.0, 0.1], args=("W1", "W2", "R_Y", "Y", partial_data), method='hybr')
     print(roots_RY.x)
-
-    model_R_Y = sm.GLM.from_formula(formula='R_Y ~ Y + W2', data=full_data, family=sm.families.Binomial()).fit()
 
     # drop rows of data where R_Y=0
     partial_data_Y = partial_data[partial_data["R_Y"] == 1]
 
-    print(model_R_Y.predict(partial_data_Y))
-
     print(rootsPrediction_Y(roots_RY.x, "W2", "Y", partial_data_Y))
+
+    print(np.average(np.abs(partial_data_Y["pRY_1"] - rootsPrediction_Y(roots_RY.x, "W2", "Y", partial_data_Y))))
