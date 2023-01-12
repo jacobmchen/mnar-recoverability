@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import statsmodels.api as sm
 from scipy.special import expit
 from scipy import optimize
 from adjustment import *
@@ -149,7 +148,7 @@ class ShadowRecovery:
 
         print(self.paramsA, self.paramsY)
 
-        return backdoor_adjustment_binary(self.A, self.Y, self.Z, self.reweight_data)
+        return backdoor_adjustment_binary(self.Y, self.A, self.Z, self.reweight_data)
 
     def confidenceIntervals(self):
         return compute_confidence_intervals(self.Y, self.A, self.Z, self.reweight_data, "backdoor_binary")
