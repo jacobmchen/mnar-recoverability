@@ -9,17 +9,16 @@ class ShadowCovariateSelection:
     under self-censoring outcome or treatment and outcome.
     """
 
-    def __init__(self, A, R_A, Y, R_Y, dataset, alpha=0.05):
+    def __init__(self, A, Y, R_Y, dataset, alpha=0.05):
         """
         Constructor for the class.
-        A, R_A, Y, and R_Y are strings representing the names of the treatment, missingness
-        indicator of treatment, outcome, missingness indicator of outcome, respectively in
+        A, Y, and R_Y are strings representing the names of the treatment, outcome, 
+        missingness indicator of outcome, respectively in
         the dataframe dataset.
         dataset is a dataframe representing the dataset with missingness.
         alpha is used as the threshold for independence tests.
         """
         self.A = A
-        self.R_A = R_A
         self.Y = Y
         self.R_Y = R_Y
         self.dataset = dataset
@@ -29,27 +28,21 @@ class ShadowCovariateSelection:
         for col in self.dataset.columns:
             self.W.append(col)
         self.W.remove(self.A)
-        self.W.remove(self.R_A)
         self.W.remove(self.Y)
         self.W.remove(self.R_Y)
 
         self.alpha = alpha
 
-    def test_independence(self, W_i, Z, condition_A_R_A=False):
+    def test_independence(self, S, Z, condition_A=False):
         """
         Use the weighted likelihood ratio test to test for independence between R_Y and a 
         candidate shadow variable W_i while conditioning on the set Z.
         """
-        # the dataset we will use for this independence test depending on if we are conditioning
-        # on A and R_A=1
-        this_dataset = pd.DataFrame()
-        if condition_A_R_A:
-            this_dataset = self.dataset[self.dataset[self.R_A] == 1]
+        # if conditioning on A, then we add A to the adjustment set
+        if condition_A:
             Z.append(self.A)
-        else:
-            this_dataset = self.dataset
 
-        p_val = weighted_lr_test(this_dataset, self.R_Y, W_i, Z, state_space="binary")
+        p_val = weighted_lr_test(self.dataset, self.R_Y, S, Z, state_space="binary")
         if p_val < self.alpha:
             return False
         else:
@@ -81,12 +74,11 @@ class ShadowCovariateSelection:
                     break
 
                 subsets = self._find_subsets(fullZ, j)
-                print(subsets)
                 # iterate over all the subsets for the given length
                 for k in range(len(subsets)):
                     # perform the conditional independence tests
                     condition1 = self.test_independence(shadowVar, list(subsets[k]))
-                    condition2 = self.test_independence(shadowVar, list(subsets[k]), condition_A_R_A=True)
+                    condition2 = self.test_independence(shadowVar, list(subsets[k]), condition_A=True)
 
                     if (not condition1) and condition2:
                         # we have found a valid shadow variable and adjustment set
