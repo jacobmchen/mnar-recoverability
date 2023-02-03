@@ -3,65 +3,43 @@ import numpy as np
 from scipy.special import expit
 from scipy import optimize
 from adjustment import *
+import statsmodels.api as sm
 
 class ShadowRecovery:
     """
-    class for recovering the causal effect between self-censoring treatment
-    and outcome
+    Class for recovering the causal effect under self-censoring outcome.
     """
 
-    def __init__(self, A, Y, R_Y, Z, S, dataset):
+    def __init__(self, A, Y, R_Y, Z, dataset):
         """
         Constructor for the class.
-        Initial guesses for the parameters are all 0 except for the coefficient
-        of the odds ratio, which starts at 1.
+
+        Due to the completeness condition of using shadow variables, the outcome
+        cannot have more possible values than the treatment. For this implementation, 
+        A is a binary variable; hence, Y should be a binary variable as well.
+
         A, Y, and R_Y should be strings representing the names of the
-        treatment, outcome, and missingness
-        indicator for the outcome, respectively, as represented in the pandas 
-        dataframe dataset.
+        treatment, outcome, and missingness indicator for the outcome, respectively, 
+        as represented in the pandas dataframe dataset.
+
         Z should be a list of strings representing the names of the variables in the
         adjustment set as represented in dataset.
-        S is a string representing the name of the shadow variable as represented in
-        dataset.
-        dataset should be a dataset already with missing values.
+
+        dataset should be a dataset already with missing values for the outcome where
+        missing values of the outcome are represented by -1.
         """
         self.A = A
         self.Y = Y
         self.R_Y = R_Y
         self.Z = Z
-        self.S = S
         self.dataset = dataset
+        self.size = len(self.dataset)
+
         # drop all rows of data where R_Y=0
         self.subset_data = self.dataset[self.dataset[R_Y] == 1]
-        # placeholder dataframe to update later
-        self.reweight_data = pd.DataFrame()
 
         # initialize list for the parameters of outcome
-        self.paramsY = []
-
-    def _shadowIPWFunctional(self, params, X, R_X):
-        """
-        Define the shadow IPW functional for this instance of shadow recovery.
-        There are two cases: when Z is empty and when Z is non-empty.
-        X is the self-censoring variable, and R_X is its missingness indicator
-        """
-        # outputs represent the outputs of this functional
-        outputs = []
-        
-        # p(R_X = 1 | X = 0)
-        # the expit is of the sum of all the parameters multiplied by one parameter
-        # when there are no parameters, pRX_X_0 = expit(0)
-        pRX_X_0 = expit( np.sum(params[i]*self.dataset[self.Z[i]] for i in range(len(self.Z))) )
-        pRX = pRX_X_0 / ( pRX_X_0 + np.exp(params[len(self.Z)]*self.dataset[X])*(1-pRX_X_0) )
-
-        # first k outputs are each parameter individually
-        for i in range(len(self.Z)):
-            outputs.append( np.average( (self.dataset[self.Z[i]]*self.dataset[R_X]) / pRX - (self.dataset[self.Z[i]]) ) )
-
-        # final output is the average of the shadow variable
-        outputs.append( np.average( (np.average(self.dataset[self.S])*self.dataset[R_X]) / pRX - (np.average(self.dataset[self.S])) ) )
-
-        return outputs
+        self.paramsY = self._initializeParametersGuess()
 
     def _initializeParametersGuess(self):
         """
@@ -78,40 +56,112 @@ class ShadowRecovery:
 
         return guess
 
+    def _estimatingEquations(self, params):
+        """
+        Define the estimating equations for shadow recovery.
+        There are two cases: when Z is empty and when Z is non-empty.
+        """
+        # outputs represent the outputs of this functional
+        outputs = []
+        
+        # p(R_Y = 1 | Y = 0) = the sum of all the parameters multiplied by each variable in Z
+        # then put into an expit
+        # when there are no parameters, pRX_X_0 = expit(0)
+        pRY_Y_0 = expit( np.sum(params[i]*self.dataset[self.Z[i]] for i in range(len(self.Z))) )
+        # the final parameter is used to estmate OR(R_Y=0, Y)
+        pRY = pRY_Y_0 / ( pRY_Y_0 + np.exp(params[len(self.Z)]*self.dataset[self.Y])*(1-pRY_Y_0) )
+
+        # first k equations are each variable in Z individually
+        for i in range(len(self.Z)):
+            outputs.append( np.average( (self.dataset[self.Z[i]]*self.dataset[self.R_Y]) / pRY - (self.dataset[self.Z[i]]) ) )
+
+        # final equation is the average of the shadow variable, in this case the treatment
+        outputs.append( np.average( (np.average(self.dataset[self.A])*self.dataset[self.R_Y]) / pRY - (np.average(self.dataset[self.A])) ) )
+
+        return outputs
+
     def _findRoots(self):
         """
         Estimate the roots for the treatment and outcome.
         """
-        guess = self._initializeParametersGuess()
-        self.paramsY = optimize.root(self._shadowIPWFunctional, guess, args=(self.Y, self.R_Y), method="hybr")
+        self.paramsY = optimize.root(self._estimatingEquations, self.paramsY, method="hybr")
         print(self.paramsY.success)
         self.paramsY = self.paramsY.x
 
-    def _predictPropensityScores(self):
+    def _propensityScoresRY(self, data):
         """
-        Predict the propensity scores for the missingness of the treatment and outcome.
-        Predicting the propensity scores depend on the initial functionals used to estimate them.
+        Predict the propensity scores for the missingness of the outcome using the recovered
+        parameters.
         """
         # p(R_Y = 1 | Y = 0)
-        pRY_Y_0 = expit( np.sum(self.paramsY[i]*self.subset_data[self.Z[i]] for i in range(len(self.Z))) )
-        predictionsRY = pRY_Y_0 / (pRY_Y_0 + np.exp(self.paramsY[len(self.Z)]*self.subset_data[self.Y])*(1-pRY_Y_0))
+        pRY_Y_0 = expit( np.sum(self.paramsY[i]*data[self.Z[i]] for i in range(len(self.Z))) )
+        propensityScoresRY = pRY_Y_0 / (pRY_Y_0 + np.exp(self.paramsY[len(self.Z)]*data[self.Y])*(1-pRY_Y_0))
 
-        return predictionsRY
-    
-    def _reweightData(self):
-        propensityScore_RY = self._predictPropensityScores()
+        return propensityScoresRY
 
-        self.subset_data["weights"] = 1/(propensityScore_RY)
+    def _propensityScoresA(self, data):
+        """
+        Predict the propensity scores for the outcome given the backdoor adjustment set
+        Z.
+        """
+        # if Z is empty, then there is no need to fit a model and we can just return 
+        # the marginal distribution of the treatment A
+        if len(self.Z) == 0:
+            pA1 = np.bincount(self.dataset[self.A])[1]/self.size
 
-        self.reweight_data = self.subset_data.sample(n=len(self.subset_data), replace=True, weights="weights")
+            propensityScoresA = data[self.A]*pA1 + (1-data[self.A])*(1-pA1)
+            
+            return propensityScoresA
 
+        # if Z is non-empty, we use a linear regression to predict the propensity score of 
+        # the treatment given the adjustment set Z
+        formula = self.A + "~"
+        formula += "+".join(self.Z)
+
+        # we may fit the model using the full dataset since the model does not depend on
+        # any missing values
+        model = sm.GLM.from_formula(formula=formula, data=self.dataset, family=sm.families.Binomial()).fit()
+
+        # make predictions only for the subsetted data
+        propensityScoresA = model.predict(data)
+        
+        return propensityScoresA
+
+    def _inverseProbabilityWeightsEstimator(self, data):
+        propensityScoresRY = self._propensityScoresRY(data)
+        # print(propensityScoresRY)
+        propensityScoresA = self._propensityScoresA(data)
+        # print(propensityScoresA)
+
+        # inverse-probability weight estimator where A is used directly as an indicator function
+        Y0 = np.average( (data[self.Y] * (1-data[self.A]) * data[self.R_Y]) / (propensityScoresRY*propensityScoresA) )
+        Y1 = np.average( (data[self.Y] * (data[self.A]) * data[self.R_Y]) / (propensityScoresRY*propensityScoresA) )
+
+        return Y1-Y0
+        
     def estimateCausalEffect(self):
         self._findRoots()
-        self._reweightData()
-
         print(self.paramsY)
 
-        return backdoor_adjustment(self.Y, self.A, self.Z, self.reweight_data)
+        return self._inverseProbabilityWeightsEstimator(self.dataset)
 
-    def confidenceIntervals(self):
-        return compute_confidence_intervals(self.Y, self.A, self.Z, self.reweight_data, "backdoor")
+    def confidenceIntervals(self, num_bootstraps=200, alpha=0.05):
+        
+        Ql = alpha/2
+        Qu = 1 - alpha/2
+        estimates = []
+        
+        for i in range(num_bootstraps):
+            
+            # resample the data with replacement
+            data_sampled = self.dataset.sample(len(self.dataset), replace=True)
+            data_sampled.reset_index(drop=True, inplace=True)
+            
+            estimates.append(self._inverseProbabilityWeightsEstimator(data_sampled))
+
+        # calculate the quantiles
+        quantiles = np.quantile(estimates, q=[Ql, Qu])
+        q_low = quantiles[0]
+        q_up = quantiles[1]
+        
+        return q_low, q_up
