@@ -85,7 +85,7 @@ class ShadowRecovery:
         Estimate the roots for the treatment and outcome.
         """
         self.paramsY = optimize.root(self._estimatingEquations, self.paramsY, method="hybr")
-        print(self.paramsY.success)
+        # print(self.paramsY.success)
         self.paramsY = self.paramsY.x
 
     def _propensityScoresRY(self, data):
@@ -109,7 +109,7 @@ class ShadowRecovery:
         if len(self.Z) == 0:
             pA1 = np.bincount(self.dataset[self.A])[1]/self.size
 
-            propensityScoresA = data[self.A]*pA1 + (1-data[self.A])*(1-pA1)
+            propensityScoresA = 0*data[self.A] + pA1
             
             return propensityScoresA
 
@@ -121,6 +121,7 @@ class ShadowRecovery:
         # we may fit the model using the full dataset since the model does not depend on
         # any missing values
         model = sm.GLM.from_formula(formula=formula, data=self.dataset, family=sm.families.Binomial()).fit()
+        # print(model.summary())
 
         # make predictions only for the subsetted data
         propensityScoresA = model.predict(data)
@@ -134,14 +135,14 @@ class ShadowRecovery:
         # print(propensityScoresA)
 
         # inverse-probability weight estimator where A is used directly as an indicator function
-        Y0 = np.average( (data[self.Y] * (1-data[self.A]) * data[self.R_Y]) / (propensityScoresRY*propensityScoresA) )
+        Y0 = np.average( (data[self.Y] * (1-data[self.A]) * data[self.R_Y]) / (propensityScoresRY*(1-propensityScoresA)) )
         Y1 = np.average( (data[self.Y] * (data[self.A]) * data[self.R_Y]) / (propensityScoresRY*propensityScoresA) )
 
         return Y1-Y0
         
     def estimateCausalEffect(self):
         self._findRoots()
-        print(self.paramsY)
+        # print(self.paramsY)
 
         return self._inverseProbabilityWeightsEstimator(self.dataset)
 
