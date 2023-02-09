@@ -10,7 +10,7 @@ class ShadowRecovery:
     Class for recovering the causal effect under self-censoring outcome.
     """
 
-    def __init__(self, A, Y, R_Y, Z, dataset, ignoreMissingness=False):
+    def __init__(self, A, Y, R_Y, Z, dataset, ignoreMissingness=False, useWrongBackdoorSet=False):
         """
         Constructor for the class.
 
@@ -42,6 +42,7 @@ class ShadowRecovery:
         self.paramsY = self._initializeParametersGuess()
 
         self.ignoreMissingness = ignoreMissingness
+        self.useWrongBackdoorSet = useWrongBackdoorSet
 
     def _initializeParametersGuess(self):
         """
@@ -118,7 +119,12 @@ class ShadowRecovery:
         # if Z is non-empty, we use a linear regression to predict the propensity score of 
         # the treatment given the adjustment set Z
         formula = self.A + "~"
-        formula += "+".join(self.Z)
+        if self.useWrongBackdoorSet:
+            # if we purposefully use the wrong backdoor set, we can the last element in Z
+            formula += "+".join(self.Z[:-1])
+        else:
+            # otherwise use the correct backdoor set, which is the entire set Z
+            formula += "+".join(self.Z)
 
         # we may fit the model using the full dataset since the model does not depend on
         # any missing values

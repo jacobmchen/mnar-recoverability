@@ -60,6 +60,11 @@ class ShadowCovariateSelection:
         return list(itertools.combinations(Z, n))
     
     def findAdjustmentSet(self, max_size=None):
+        """
+        Use an exhaustive search to find an adjustment set. We start the search from
+        the smallest possible subsets of Z.
+        """
+
         # if user does not specify a max size, then the max size is simply the 
         # size of the entire set of candidates
         
