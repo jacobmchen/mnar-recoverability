@@ -10,7 +10,7 @@ class ShadowRecovery:
     Class for recovering the causal effect under self-censoring outcome.
     """
 
-    def __init__(self, A, Y, R_Y, Z, dataset):
+    def __init__(self, A, Y, R_Y, Z, dataset, ignoreMissingness=False):
         """
         Constructor for the class.
 
@@ -40,6 +40,8 @@ class ShadowRecovery:
 
         # initialize list for the parameters of outcome
         self.paramsY = self._initializeParametersGuess()
+
+        self.ignoreMissingness = ignoreMissingness
 
     def _initializeParametersGuess(self):
         """
@@ -129,21 +131,31 @@ class ShadowRecovery:
         return propensityScoresA
 
     def _inverseProbabilityWeightsEstimator(self, data):
-        propensityScoresRY = self._propensityScoresRY(data)
-        # print(propensityScoresRY)
+        # only need to calculate propensity scores for R_Y if we are not ignoring missingness
+        if not self.ignoreMissingness:
+            self._findRoots()
+            # print(self.paramsY)
+            propensityScoresRY = self._propensityScoresRY(data)
+            # print(propensityScoresRY)
+
         propensityScoresA = self._propensityScoresA(data)
         # print(propensityScoresA)
 
         # inverse-probability weight estimator where A is used directly as an indicator function
-        Y0 = np.average( (data[self.Y] * (1-data[self.A]) * data[self.R_Y]) / (propensityScoresRY*(1-propensityScoresA)) )
-        Y1 = np.average( (data[self.Y] * (data[self.A]) * data[self.R_Y]) / (propensityScoresRY*propensityScoresA) )
+        # if we are ignoring missingness, then we only need the propensity scores for A
+        if self.ignoreMissingness:
+            Y0 = np.average( (data[self.Y] * (1-data[self.A])) / (1-propensityScoresA) )
+        else:
+            Y0 = np.average( (data[self.Y] * (1-data[self.A]) * data[self.R_Y]) / (propensityScoresRY*(1-propensityScoresA)) )
+
+        if self.ignoreMissingness:
+            Y1 = np.average( (data[self.Y] * (data[self.A])) / (propensityScoresA) )
+        else:
+            Y1 = np.average( (data[self.Y] * (data[self.A]) * data[self.R_Y]) / (propensityScoresRY*propensityScoresA) )
 
         return Y1-Y0
         
     def estimateCausalEffect(self):
-        self._findRoots()
-        # print(self.paramsY)
-
         return self._inverseProbabilityWeightsEstimator(self.dataset)
 
     def confidenceIntervals(self, num_bootstraps=200, alpha=0.05):

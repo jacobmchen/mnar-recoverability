@@ -62,6 +62,13 @@ class ShadowCovariateSelection:
     def findAdjustmentSet(self, max_size=None):
         # if user does not specify a max size, then the max size is simply the 
         # size of the entire set of candidates
+        
+        # check for dependence between missingness of outcome and incentive
+        condition1 = self.test_independence(self.R_Y, self.I, [], self.dataset)
+        # if condition1 is not satisfied, then we can directly return None
+        if condition1:
+            return None
+
         if max_size == None:
             max_size = len(self.W)
 
@@ -83,9 +90,6 @@ class ShadowCovariateSelection:
                 for k in range(len(subsets)):
                     # perform the conditional independence tests
 
-                    # check for dependence between missingness of outcome and incentive
-                    condition1 = self.test_independence(self.R_Y, self.I, [], self.dataset)
-
                     # check for independence between incentive and treatment conditional on the subset
                     # this test requires using only data where R_Y=1
                     condition2 = self.test_independence(self.A, self.I, list(subsets[k])+[self.Y], self.subset_data)
@@ -96,7 +100,7 @@ class ShadowCovariateSelection:
                     # check for independence between S and R_Y conditional on the subset and the treatment
                     condition4 = self.test_independence(self.R_Y, W, list(subsets[k])+[self.A], self.dataset)
 
-                    if (not condition1) and condition2 and (not condition3) and condition4:
+                    if condition2 and (not condition3) and condition4:
                         # we have found a valid subset that satisfies the four conditions
                         return W, list(subsets[k])
 
