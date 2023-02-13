@@ -32,23 +32,34 @@ def generateData(size=5000, verbose=False, possible=True):
     W3 = W[:,2]
     W4 = W[:,3]
     
-    A = np.random.binomial(1, expit(0.52 + W1 + W2 + W3 + W4), size)
+    A = np.random.binomial(1, expit(0.52 + 2*W1 + 2*W2 + 2*W3 + 2*W4), size)
     if verbose:
        print("proportion of A=1:", np.bincount(A)[1]/size)
 
-    Y = np.random.binomial(1, expit(3*A + W2 + W3 + W4), size)
+    Y = np.random.binomial(1, expit(3*A + 2*W2 + 2*W3 + 2*W4), size)
     if verbose:
        print("proportion of Y=1:", np.bincount(Y)[1]/size)
     
     I = np.random.normal(0, 2, size)
 
     params = [1, 0.5, -1.5, 1.5]
+
+    # flag will help us keep track if we need to treat W4 as an unmeasured confounder
+    # if we are treating W4 as an unmeasured confounder, then the flag will remain True
+    flag = True
     # we generate the data where there is a possible Z
     if possible:
         pRY_Y_0 = expit(params[0]*W2 + params[0]*W3 + params[0]*W4 + params[1]*I)
+        flag = False
     # we generate data where there is no possible Z due to the A to R_Y edge
     else:
-        pRY_Y_0 = expit(params[0]*W2 + params[0]*W3 + params[0]*W4 + params[1]*I + params[3]*A)
+        # there's a 0.5 probability that we add an edge A -> R_Y and a 0.5 probability that we
+        # treat W4 as an unmeasured confounder
+        if np.random.uniform() < 0.5:
+            pRY_Y_0 = expit(params[0]*W2 + params[0]*W3 + params[0]*W4 + params[1]*I + params[3]*A)
+            flag = False
+        else:
+            pRY_Y_0 = expit(params[0]*W2 + params[0]*W3 + params[0]*W4 + params[1]*I)
 
     pRY_1 = pRY_Y_0 / ( pRY_Y_0 + np.exp(params[2]*Y) * (1-pRY_Y_0) )
     R_Y = np.random.binomial(1, pRY_1, size)
@@ -56,44 +67,65 @@ def generateData(size=5000, verbose=False, possible=True):
         print("proportion of R_Y=1:", np.bincount(R_Y)[1]/size)
 
     # create fully observed dataset
-    full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "W3": W3, "W4": W4, "I": I, "R_Y": R_Y})
+    if flag:
+        # we need to treat W4 as an unmeasured confounder
+        full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "W3": W3, "I": I, "R_Y": R_Y})
+    else:
+        # no need to treat W4 as an unmeasured confounder
+        full_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "W3": W3, "W4": W4, "I": I, "R_Y": R_Y})
 
     # create partially observed dataset
     Y = full_data["Y"].copy()
     Y[full_data["R_Y"] == 0] = -1
-    partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "W3": W3, "W4": W4, "I": I, "R_Y": R_Y})
+
+    if flag:
+        # we need to treat W4 as an unmeasured confounder
+        partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "W3": W3, "I": I, "R_Y": R_Y})
+    else:
+        # no need to treat W4 as an unmeasured confounder
+        partial_data = pd.DataFrame({"A": A, "Y": Y, "W1": W1, "W2": W2, "W3": W3, "W4": W4, "I": I, "R_Y": R_Y})
 
     subset_data = partial_data[partial_data["R_Y"] == 1]
 
     return (full_data, partial_data, subset_data)
 
 def covariateSelectionExperiment(experimentSize=200):
-    size = 5000
-
-    successPossible = 0
-    successNotPossible = 0
-    for i in range(experimentSize):
-        np.random.seed(i)
-        full_data, partial_data, subset_data = generateData(size=size)
-        covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data)
-        result = covariateSelection.findAdjustmentSet()
-
-        if result != None:
-            W, Z = result
-            if Z == ["W2", "W3", "W4"]:
-                successPossible += 1
-
-        full_data, partial_data, subset_data = generateData(size=size, possible=False)
-        covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data)
-        result = covariateSelection.findAdjustmentSet()
-
-        if result == None:
-            successNotPossible += 1
+    # use multiple sizes
+    sizes = [2500]
     
-    successProbabilityPossible = successPossible / experimentSize
-    successProbabilityNotPossible = successNotPossible / experimentSize
+    # array to store the results
+    results = []
 
-    return successProbabilityPossible, successProbabilityNotPossible
+    for i in range(len(sizes)):
+        size = sizes[i]
+
+        successPossible = 0
+        successNotPossible = 0
+        for j in range(experimentSize):
+            np.random.seed(j)
+            full_data, partial_data, subset_data = generateData(size=size)
+            covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data, alpha=0.1)
+            result = covariateSelection.findAdjustmentSet()
+
+            if result != None:
+                W, Z = result
+                if Z == ["W2", "W3", "W4"]:
+                    successPossible += 1
+
+            # for the test that's not possible, there's a 0.5 probability that we add the edge A->R_Y
+            # and a 0.5 probability that we drop one of the W
+            full_data, partial_data, subset_data = generateData(size=size, possible=False)
+            covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data, alpha=0.1)
+            result = covariateSelection.findAdjustmentSet()
+
+            if result == None:
+                successNotPossible += 1
+        
+        successProbabilityPossible = successPossible / experimentSize
+        successProbabilityNotPossible = successNotPossible / experimentSize
+        results.append((successProbabilityPossible, successProbabilityNotPossible))
+
+    return results
 
 def estimationExperiment(experimentSize=200):
     # calculate the ground truth causal effect
@@ -102,7 +134,7 @@ def estimationExperiment(experimentSize=200):
 
     groundTruth = backdoor_adjustment_binary("Y", "A", ["W2", "W3", "W4"], full_data)
 
-    sizes = [500, 5000, 10000, 15000]
+    sizes = [500, 2500, 5000, 10000]
     results = []
 
     for i in range(len(sizes)):
@@ -124,7 +156,7 @@ def estimationExperiment(experimentSize=200):
             failBackdoorSetData.append(failBackdoorSet.estimateCausalEffect())
 
             # use the set Z from the covariate selection class
-            covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data)
+            covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data, alpha=0.05)
             result = covariateSelection.findAdjustmentSet()
             if result != None:
                 W, Z = result
@@ -142,9 +174,14 @@ def estimationExperiment(experimentSize=200):
 
 
 if __name__ == "__main__":
+    # generateData(verbose=True)
+
     print("running experiments for covariate selection...")
-    print("(p(find correct adjustment set when possible), p(find no adjustment set when not possible))")
-    print(covariateSelectionExperiment(experimentSize=200))
+    results = covariateSelectionExperiment(experimentSize=200)
+
+    f = open("covariate_selection_results.txt", "w")
+    f.write(str(results))
+    f.close()
 
     print("running experiments for recovery of causal effect...")
     groundTruth, results = estimationExperiment(experimentSize=200)
