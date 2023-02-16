@@ -85,7 +85,7 @@ class ShadowCovariateSelection:
             fullZ.remove(W)
             
             # iterate over all possible subset lengths of fullZ
-            for j in range(len(fullZ)+1):
+            for j in range(0, len(fullZ)+1):
                 # make sure we do not exceed the maximum size
                 if j > max_size:
                     break
@@ -97,13 +97,17 @@ class ShadowCovariateSelection:
 
                     # check for independence between incentive and treatment conditional on the subset
                     # this test requires using only data where R_Y=1
+                    #print(self.A, self.I, list(subsets[k]) + [self.Y], condition2)
                     condition2 = self.test_independence(self.A, self.I, list(subsets[k])+[self.Y], self.subset_data)
+                    #print(self.A, self.I, list(subsets[k]) + [self.Y], condition2)
 
                     # check for dependence between S and R_Y conditional on the subset
                     condition3 = self.test_independence(self.R_Y, W, list(subsets[k]), self.dataset)
+                    #print(self.R_Y, W, list(subsets[k]), condition3)
 
                     # check for independence between S and R_Y conditional on the subset and the treatment
                     condition4 = self.test_independence(self.R_Y, W, list(subsets[k])+[self.A], self.dataset)
+                    #print(self.R_Y, W, list(subsets[k])+[self.A], condition4)
 
                     if condition2 and (not condition3) and condition4:
                         # we have found a valid subset that satisfies the four conditions

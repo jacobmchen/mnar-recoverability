@@ -90,6 +90,7 @@ class ShadowRecovery:
         self.paramsY = optimize.root(self._estimatingEquations, self.paramsY, method="hybr")
         # print(self.paramsY.success)
         self.paramsY = self.paramsY.x
+        # print(self.paramsY)
 
     def _propensityScoresRY(self, data):
         """
@@ -136,19 +137,35 @@ class ShadowRecovery:
         
         return propensityScoresA
 
+    def _clipping(self, propensityScores, low=0.01, high=0.99):
+        
+        clippedScores = []
+        for p in propensityScores:
+            if p < low:
+                clippedScores.append(low)
+            elif p > high:
+                clippedScores.append(high)
+            else:
+                clippedScores.append(p)
+
+        return np.array(clippedScores)
+
     def _inverseProbabilityWeightsEstimator(self, data):
         # only need to calculate propensity scores for R_Y if we are not ignoring missingness
         if not self.ignoreMissingness:
             self._findRoots()
             # print(self.paramsY)
             propensityScoresRY = self._propensityScoresRY(data)
+            propensityScoresRY = self._clipping(propensityScoresRY)
             # print(propensityScoresRY)
 
         propensityScoresA = self._propensityScoresA(data)
+        propensityScoresA = self._clipping(propensityScoresA)
         # print(propensityScoresA)
 
         # inverse-probability weight estimator where A is used directly as an indicator function
         # if we are ignoring missingness, then we only need the propensity scores for A
+
         if self.ignoreMissingness:
             Y0 = np.average( (data[self.Y] * (1-data[self.A])) / (1-propensityScoresA) )
         else:
