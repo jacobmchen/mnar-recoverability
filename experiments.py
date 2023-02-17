@@ -8,17 +8,20 @@ from adjustment import *
 from ratio_test import *
 
 def _clipping(propensityScores, low=0.01, high=0.99):
-        
-        clippedScores = []
-        for p in propensityScores:
-            if p < low:
-                clippedScores.append(low)
-            elif p > high:
-                clippedScores.append(high)
-            else:
-                clippedScores.append(p)
+    """
+    Apply the clipping operation to the input propensityScores to increase the stability
+    of the inverse probability weight estimator.
+    """
+    clippedScores = []
+    for p in propensityScores:
+        if p < low:
+            clippedScores.append(low)
+        elif p > high:
+            clippedScores.append(high)
+        else:
+            clippedScores.append(p)
 
-        return np.array(clippedScores)
+    return np.array(clippedScores)
 
 def generateData(size=5000, verbose=False, possible=True):
     """
@@ -104,6 +107,10 @@ def generateData(size=5000, verbose=False, possible=True):
     return (full_data, partial_data, subset_data)
 
 def covariateSelectionExperiment(experimentSize=200):
+    """
+    Run the first set of experiments for covariate selection.
+    """
+
     # use multiple sizes
     sizes = [500, 2500, 5000, 10000]
     
@@ -123,7 +130,7 @@ def covariateSelectionExperiment(experimentSize=200):
             covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data, alpha=0.1)
             result = covariateSelection.findAdjustmentSet()
 
-            if result != None and result[1] == ["W2", "W3", "W4"]:
+            if result != None and result == ["W2", "W3", "W4"]:
                 true_positive += 1
             else:
                 false_negative += 1
@@ -145,10 +152,16 @@ def covariateSelectionExperiment(experimentSize=200):
     return results
 
 def estimationExperiment(experimentSize=200):
+    """
+    Run the second set of experiments for estimating the average causal effect.
+    """
+
     # calculate the ground truth causal effect
     np.random.seed(0)
     full_data, partial_data, subset_data = generateData(size=50000)
 
+    # use the regression method to make an estimate for the true causal effect with extremely
+    # large sample size
     groundTruth = backdoor_adjustment_binary("Y", "A", ["W2", "W3", "W4"], full_data)
 
     sizes = [500, 2500, 5000, 10000]
@@ -176,7 +189,7 @@ def estimationExperiment(experimentSize=200):
             covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data, alpha=0.05)
             result = covariateSelection.findAdjustmentSet()
             if result != None:
-                W, Z = result
+                Z = result
                 recovery = ShadowRecovery("A", "Y", "R_Y", Z, partial_data)
                 methodData.append(recovery.estimateCausalEffect())
             else:
@@ -191,29 +204,6 @@ def estimationExperiment(experimentSize=200):
 
 
 if __name__ == "__main__":
-    # full_data, partial_data, subset_data = generateData(size=10000, verbose=True)
-    # shadow_recovery = ShadowRecovery("A", "Y", "R_Y", ["W2", "W3", "W4"], partial_data)
-
-    # print("Shadow var", shadow_recovery.estimateCausalEffect())
-
-    # shadow_recovery_true = ShadowRecovery("A", "Y", "R_Y", ["W2", "W3", "W4"], full_data, ignoreMissingness=True)
-    # print("IPW full data", shadow_recovery_true.estimateCausalEffect())
-
-    # print("Backdoor", backdoor_adjustment_binary("Y", "A", ["W2", "W3", "W4"], full_data))
-
-    # print("I indep R_Y", weighted_lr_test(full_data, "I", "R_Y"))
-    # print("A indep I | Y, Z, R_Y=1", weighted_lr_test(subset_data, "A", "I", ["W2", "W3", "W4", "Y"]))
-    # print("R_Y indep W1 | Z", weighted_lr_test(full_data, "R_Y", "W1", ["W2", "W3", "W4"]))
-    # print("R_Y indep W1 | A, Z", weighted_lr_test(full_data, "R_Y", "W1", ["W2", "W3", "W4", "A"]))
-    
-    #covariateSelection = ShadowCovariateSelection("A", "Y", "R_Y", "I", partial_data, alpha=0.05)
-    #result = covariateSelection.findAdjustmentSet()
-    #print(result)
-
-    #shadow_recovery = ShadowRecovery("A", "Y", "R_Y", result[1] + ['I'], partial_data)
-
-    #print("Shadow var", shadow_recovery.estimateCausalEffect())
-
     print("running experiments for covariate selection...")
     results = covariateSelectionExperiment(experimentSize=200)
 
@@ -221,17 +211,17 @@ if __name__ == "__main__":
     f.write(str(results))
     f.close()
 
-    # print("running experiments for recovery of causal effect...")
-    # groundTruth, results = estimationExperiment(experimentSize=200)
+    print("running experiments for recovery of causal effect...")
+    groundTruth, results = estimationExperiment(experimentSize=200)
 
-    # f = open("groundTruth.txt", "w")
-    # f.write(str(groundTruth))
-    # f.close()
+    f = open("groundTruth.txt", "w")
+    f.write(str(groundTruth))
+    f.close()
 
-    # for i in range(0, 4):
-    #     dataSize = pd.DataFrame({"No missing\nadjustment": results[i][0], "Wrong\nbackdoor set": results[i][1],
-    #                              "Method": results[i][2], "Correct\nadjustment": results[i][3]})
-    #     dataSize.to_csv("dataSize"+str(i)+".csv", index=False)
+    for i in range(0, 4):
+        dataSize = pd.DataFrame({"No missing\nadjustment": results[i][0], "Wrong\nbackdoor set": results[i][1],
+                                 "Method": results[i][2], "Correct\nadjustment": results[i][3]})
+        dataSize.to_csv("dataSize"+str(i)+".csv", index=False)
 
     print("experiments finished!")
     

@@ -138,7 +138,10 @@ class ShadowRecovery:
         return propensityScoresA
 
     def _clipping(self, propensityScores, low=0.01, high=0.99):
-        
+        """
+        Apply the clipping operation to the input propensityScores to increase the stability
+        of the inverse probability weight estimator.
+        """
         clippedScores = []
         for p in propensityScores:
             if p < low:
@@ -151,6 +154,9 @@ class ShadowRecovery:
         return np.array(clippedScores)
 
     def _inverseProbabilityWeightsEstimator(self, data):
+        """
+        Apply the inverse probability weight estimator to recover the causal effect.
+        """
         # only need to calculate propensity scores for R_Y if we are not ignoring missingness
         if not self.ignoreMissingness:
             self._findRoots()
@@ -179,10 +185,15 @@ class ShadowRecovery:
         return Y1-Y0
         
     def estimateCausalEffect(self):
+        """
+        Estimate the causal effect.
+        """
         return self._inverseProbabilityWeightsEstimator(self.dataset)
 
     def confidenceIntervals(self, num_bootstraps=200, alpha=0.05):
-        
+        """
+        Generate confidence intervals for the average causal effect.
+        """
         Ql = alpha/2
         Qu = 1 - alpha/2
         estimates = []

@@ -12,9 +12,14 @@ if __name__ == "__main__":
 
     sizes = [500, 2500, 5000, 10000]
 
-    for i in range(1, len(sizes)):
+    # plot data in 4 separate graphs
+
+    for i in range(0, len(sizes)):
 
         dataSize = pd.read_csv("dataSize"+str(i)+".csv")
+
+        # rename colummn correct adjustment to oracle adjustment
+        dataSize = dataSize.rename(columns={"Correct\nadjustment": "Oracle\nadjustment"})
 
         fig, ax = plt.subplots()
         ax.plot(list(range(0, width)), groundTruth, "r", linewidth=2)
@@ -25,6 +30,8 @@ if __name__ == "__main__":
         plt.ylim([0, 0.9])
 
         plt.show()
+
+    # code below plots all the data in one large graph
 
     # width = 18
     # groundTruth = [groundTruth] * width

@@ -111,7 +111,7 @@ class ShadowCovariateSelection:
 
                     if condition2 and (not condition3) and condition4:
                         # we have found a valid subset that satisfies the four conditions
-                        return W, list(subsets[k])
+                        return list(subsets[k])
 
         # failed to find a valid subset that satisfies the four conditions
         return None
