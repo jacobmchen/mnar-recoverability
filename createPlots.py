@@ -13,13 +13,14 @@ if __name__ == "__main__":
     sizes = [500, 2500, 5000, 10000]
 
     # plot data in 4 separate graphs
-
-    for i in range(0, len(sizes)):
+    for i in range(3, len(sizes)):
 
         dataSize = pd.read_csv("dataSize"+str(i)+".csv")
 
         # rename colummn correct adjustment to oracle adjustment
-        dataSize = dataSize.rename(columns={"Correct\nadjustment": "Oracle\nadjustment"})
+        dataSize = dataSize.rename(columns={"Correct\nadjustment": "Oracle",
+                                            "Wrong\nbackdoor set": "Wrong\nconfounding\nadjustment",
+                                            "Method": "Using\nC1-C4"})
 
         fig, ax = plt.subplots()
         ax.plot(list(range(0, width)), groundTruth, "r", linewidth=2)
